@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pedidos - Alex Distribuidora</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f0f2f5; }
+    
+    /* Login */
+    #tela-login { display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .login-box { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 320px; }
+    .login-box h2 { text-align: center; margin-bottom: 24px; color: #25D366; }
+    .login-box input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; }
+    .login-box button { width: 100%; padding: 12px; background: #25D366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .erro { color: red; font-size: 13px; text-align: center; margin-top: 8px; }
+
+    /* Sistema */
+    #tela-sistema { display: none; }
+    header { background: #25D366; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 20px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    #contador { background: white; color: #25D366; padding: 4px 12px; border-radius: 20px; font-weight: bold; }
+    #btn-sair { background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+    .container { padding: 24px; max-width: 900px; margin: 0 auto; }
+    .pedido { background: white; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #25D366; }
+    .pedido.em-entrega { border-left-color: #f59e0b; }
+    .pedido.entregue { border-left-color: #6b7280; opacity: 0.6; }
+    .pedido-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .nome { font-weight: bold; font-size: 16px; }
+    .hora { color: #6b7280; font-size: 13px; }
+    .produto { font-size: 15px; color: #374151; margin-bottom: 4px; }
+    .endereco { font-size: 14px; color: #6b7280; margin-bottom: 4px; }
+    .telefone { font-size: 13px; color: #25D366; margin-bottom: 12px; }
+    .acoes { display: flex; gap: 8px; }
+    button { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn-entrega { background: #f59e0b; color: white; }
+    .btn-entregue { background: #25D366; color: white; }
+    .btn-entregue:disabled, .btn-entrega:disabled { opacity: 0.4; cursor: default; }
+    .vazio { text-align: center; padding: 60px; color: #6b7280; }
+  </style>
+</head>
+<body>
+
+  <div id="tela-login">
+    <div class="login-box">
+      <h2>📦 Vendas</h2>
+      <input type="text" id="usuario" placeholder="Usuário" />
+      <input type="password" id="senha" placeholder="Senha" />
+      <button onclick="login()">Entrar</button>
+      <div class="erro" id="erro-login"></div>
+    </div>
+  </div>
+
+  <div id="tela-sistema">
+    <header>
+      <h1>📦 Pedidos - Alex Distribuidora</h1>
+      <div class="header-right">
+        <span id="contador">0 novos</span>
+        <button id="btn-sair" onclick="sair()">Sair</button>
+      </div>
+    </header>
+    <div class="container" id="lista"></div>
+  </div>
+
+  <script>
+    let token = localStorage.getItem('token');
+    if (token) mostrarSistema();
+
+    async function login() {
+      const usuario = document.getElementById('usuario').value;
+      const senha = document.getElementById('senha').value;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({usuario, senha})
+        });
+        const data = await res.json();
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+          token = data.token;
+          mostrarSistema();
+        } else {
+          document.getElementById('erro-login').textContent = data.error || 'Erro ao fazer login';
+        }
+      } catch {
+        document.getElementById('erro-login').textContent = 'Erro de conexão';
+      }
+    }
+
+    function mostrarSistema() {
+      document.getElementById('tela-login').style.display = 'none';
+      document.getElementById('tela-sistema').style.display = 'block';
+      carregarPedidos();
+      setInterval(carregarPedidos, 5000);
+    }
+
+    function sair() {
+      localStorage.removeItem('token');
+      location.reload();
+    }
+
+    async function carregarPedidos() {
+      try {
+        const res = await fetch('/api/pedidos', {
+          headers: {'Authorization': 'Bearer ' + token}
+        });
+        if (res.status === 401) { sair(); return; }
+        const pedidos = await res.json();
+        const lista = document.getElementById('lista');
+        const novos = pedidos.filter(p => p.status === 'novo').length;
+        document.getElementById('contador').textContent = novos + ' novo' + (novos !== 1 ? 's' : '');
+        if (pedidos.length === 0) {
+          lista.innerHTML = '<div class="vazio">Nenhum pedido ainda</div>';
+          return;
+        }
+        lista.innerHTML = pedidos.map(p => {
+          const hora = new Date(p.criado_em).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+          const data = new Date(p.criado_em).toLocaleDateString('pt-BR');
+          return `
+            <div class="pedido ${p.status === 'em-entrega' ? 'em-entrega' : p.status === 'entregue' ? 'entregue' : ''}">
+              <div class="pedido-header">
+                <span class="nome">${p.nome || p.telefone}</span>
+                <span class="hora">${data} ${hora}</span>
+              </div>
+              <div class="produto">🛒 ${p.produto}</div>
+              <div class="endereco">📍 ${p.endereco}</div>
+              <div class="telefone">📱 ${p.telefone}</div>
+              <div class="acoes">
+                <button class="btn-entrega" onclick="atualizarStatus(${p.id}, 'em-entrega')" ${p.status !== 'novo' ? 'disabled' : ''}>🚴 Em entrega</button>
+                <button class="btn-entregue" onclick="atualizarStatus(${p.id}, 'entregue')" ${p.status === 'entregue' ? 'disabled' : ''}>✅ Entregue</button>
+              </div>
+            </div>`;
+        }).join('');
+      } catch {}
+    }
+
+    async function atualizarStatus(id, status) {
+      await fetch('/api/pedidos/' + id, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+        body: JSON.stringify({status})
+      });
+      carregarPedidos();
+    }
+
+    document.getElementById('senha')?.addEventListener('keypress', e => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>
